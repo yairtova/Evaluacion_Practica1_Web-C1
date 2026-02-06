@@ -1,13 +1,43 @@
 import { query } from '@/lib/db';
 import Link from 'next/link';
+import { z } from 'zod';
+
 export const dynamic = 'force-dynamic';
 
-export default async function MembersPage({ searchParams }: { searchParams: { page?: string } }) {
-  const limit = 5;
-  const page = Number(searchParams.page) || 1;
-  const offset = (page - 1) * limit;
+const searchParamsSchema = z.object({
+  page: z.string().optional(),
+  nombre_socio: z.string().optional(),
+});
 
-  const res = await query('SELECT * FROM vw_member_activity LIMIT $1 OFFSET $2', [limit, offset]);
+export default async function MembersPage({
+  searchParams,
+}: {
+  searchParams: { page?: string; nombre_socio?: string } | Promise<{ page?: string; nombre_socio?: string }>;
+}) {
+  // Asegurarse de que searchParams sea un objeto plano, no una Promise
+  const resolvedSearchParams = await Promise.resolve(searchParams);
+
+  console.log('MembersPage: searchParams resueltos:', resolvedSearchParams); // <-- Añadido para depuración
+
+  const { page, nombre_socio } = searchParamsSchema.parse(resolvedSearchParams);
+  const limit = 5;
+  const currentPage = Number(page) || 1;
+  const offset = (currentPage - 1) * limit;
+
+  let sql = 'SELECT * FROM vw_member_activity';
+  const params: (string | number)[] = [];
+  let paramIndex = 1;
+
+  if (nombre_socio) {
+    sql += ` WHERE nombre_socio ILIKE $${paramIndex}`;
+    params.push(`%${nombre_socio}%`);
+    paramIndex++;
+  }
+
+  sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+  params.push(limit, offset);
+
+  const res = await query(sql, params);
   const members = res.rows;
 
   return (
@@ -15,6 +45,19 @@ export default async function MembersPage({ searchParams }: { searchParams: { pa
       <Link href="/" className="text-blue-600 hover:underline">← Volver al Dashboard</Link>
       <h1 className="text-3xl font-bold mt-4">Actividad de Socios</h1>
       <p className="text-gray-600 mb-8">Análisis del compromiso y uso de la biblioteca por parte de los socios.</p>
+
+      <form method="GET" className="mb-8 flex gap-4 items-center">
+        <input
+          type="text"
+          name="nombre_socio"
+          placeholder="Filtrar por nombre de socio"
+          defaultValue={nombre_socio || ''}
+          className="p-2 border rounded-md"
+        />
+        <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+          Aplicar Filtro
+        </button>
+      </form>
 
       <div className="bg-blue-600 text-white p-5 rounded-lg shadow mb-6 inline-block">
         <p className="text-xs uppercase font-bold opacity-80">Socio más frecuente</p>
@@ -49,8 +92,8 @@ export default async function MembersPage({ searchParams }: { searchParams: { pa
       </div>
 
       <div className="mt-4 flex gap-2 justify-center">
-        {page > 1 && <Link href={`?page=${page - 1}`} className="px-3 py-1 bg-white border rounded hover:bg-gray-50">Anterior</Link>}
-        <Link href={`?page=${page + 1}`} className="px-3 py-1 bg-white border rounded hover:bg-gray-50">Siguiente</Link>
+        {currentPage > 1 && <Link href={`?page=${currentPage - 1}${nombre_socio ? `&nombre_socio=${nombre_socio}` : ''}`} className="px-3 py-1 bg-white border rounded hover:bg-gray-50">Anterior</Link>}
+        <Link href={`?page=${currentPage + 1}${nombre_socio ? `&nombre_socio=${nombre_socio}` : ''}`} className="px-3 py-1 bg-white border rounded hover:bg-gray-50">Siguiente</Link>
       </div>
     </div>
   );

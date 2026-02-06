@@ -1,10 +1,43 @@
 import { query } from '@/lib/db';
 import Link from 'next/link';
+import { z } from 'zod';
+
 export const dynamic = 'force-dynamic';
 
-export default async function FinesPage() {
-  const res = await query('SELECT * FROM vw_fines_summary');
+const searchParamsSchema = z.object({
+  year: z.string().optional(),
+  page: z.string().optional(),
+});
+
+export default async function FinesPage({
+  searchParams,
+}: {
+  searchParams: { year?: string; page?: string } | Promise<{ year?: string; page?: string }>;
+}) {
+  // Asegurarse de que searchParams sea un objeto plano, no una Promise
+  const resolvedSearchParams = await Promise.resolve(searchParams);
+
+  console.log('FinesPage: searchParams resueltos:', resolvedSearchParams); // <-- Añadido para depuración
+
+  const { year, page } = searchParamsSchema.parse(resolvedSearchParams);
+
+  const limit = 5;
+  const currentPage = Number(page) || 1;
+  const offset = (currentPage - 1) * limit;
+  const currentYear = year || new Date().getFullYear().toString();
+
+  const res = await query(
+    `SELECT * FROM vw_fines_summary WHERE mes_reporte LIKE $1 || '-%' ORDER BY mes_reporte DESC LIMIT $2 OFFSET $3`,
+    [currentYear, limit, offset]
+  );
   const fines = res.rows;
+
+  const totalRes = await query(
+    `SELECT COUNT(*) FROM vw_fines_summary WHERE mes_reporte LIKE $1 || '-%'`,
+    [currentYear]
+  );
+  const totalFines = totalRes.rows[0].count;
+  const totalPages = Math.ceil(totalFines / limit);
 
   const totalRecaudado = fines.reduce((acc: number, curr: any) => acc + Number(curr.total_monto), 0);
 
@@ -14,29 +47,62 @@ export default async function FinesPage() {
       <h1 className="text-3xl font-bold mt-4">Resumen de Multas</h1>
       <p className="text-gray-600 mb-8">Informe mensual de ingresos y efectividad de cobro.</p>
 
+      <form className="mb-6 flex gap-2">
+        <input
+          type="number"
+          name="year"
+          placeholder="Filtrar por año (ej. 2023)"
+          defaultValue={currentYear}
+          className="border p-2 rounded w-full md:w-60"
+        />
+        <button type="submit" className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-black">
+          Filtrar
+        </button>
+      </form>
+
       <div className="bg-amber-500 text-white p-5 rounded-lg shadow mb-6 inline-block">
-        <p className="text-xs uppercase font-bold opacity-80">Monto Total en Multas</p>
+        <p className="text-xs uppercase font-bold opacity-80">Monto Total en Multas ({currentYear})</p>
         <p className="text-2xl font-black">${totalRecaudado.toFixed(2)}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {fines.map((f: any) => (
-          <div key={f.mes_reporte} className="p-4 border rounded-lg bg-white shadow-sm">
-            <h3 className="font-bold text-gray-800 border-b pb-2 mb-2">{f.mes_reporte}</h3>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Monto:</span>
-              <span className="font-bold text-gray-900">${f.total_monto}</span>
+        {fines.length === 0 ? (
+          <p className="col-span-full text-center text-gray-500">No hay multas para el año {currentYear}.</p>
+        ) : (
+          fines.map((f: any) => (
+            <div key={f.mes_reporte} className="p-4 border rounded-lg bg-white shadow-sm">
+              <h3 className="font-bold text-gray-800 border-b pb-2 mb-2">{f.mes_reporte}</h3>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Monto:</span>
+                <span className="font-bold text-gray-900">${f.total_monto}</span>
+              </div>
+              <div className="flex justify-between text-sm mt-1">
+                <span className="text-gray-500">Multas:</span>
+                <span>{f.total_multas}</span>
+              </div>
+              <div className="mt-3 w-full bg-gray-100 rounded-full h-2">
+                <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${f.porcentaje_pagado}%` }}></div>
+              </div>
+              <p className="text-[10px] text-right mt-1 text-gray-400">Eficiencia de cobro: {f.porcentaje_pagado}%</p>
             </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-500">Multas:</span>
-              <span>{f.total_multas}</span>
-            </div>
-            <div className="mt-3 w-full bg-gray-100 rounded-full h-2">
-              <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${f.porcentaje_pagado}%` }}></div>
-            </div>
-            <p className="text-[10px] text-right mt-1 text-gray-400">Eficiencia de cobro: {f.porcentaje_pagado}%</p>
-          </div>
-        ))}
+          ))
+        )}
+      </div>
+
+      <div className="mt-6 flex justify-between items-center">
+        <p className="text-sm text-gray-500">Página {currentPage} de {totalPages}</p>
+        <div className="flex gap-2">
+          {currentPage > 1 && (
+            <Link href={`?page=${currentPage - 1}${currentYear ? `&year=${currentYear}` : ''}`} className="px-4 py-2 border rounded hover:bg-gray-100">
+              Anterior
+            </Link>
+          )}
+          {currentPage < totalPages && (
+            <Link href={`?page=${currentPage + 1}${currentYear ? `&year=${currentYear}` : ''}`} className="px-4 py-2 border rounded hover:bg-gray-100">
+              Siguiente
+            </Link>
+          )}
+        </div>
       </div>
     </div>
   );

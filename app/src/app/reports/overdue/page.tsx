@@ -1,20 +1,37 @@
 import { query } from '@/lib/db';
 import Link from 'next/link';
+import { z } from 'zod';
+
 export const dynamic = 'force-dynamic';
+
+const searchParamsSchema = z.object({
+  min_days: z.string().optional(),
+  page: z.string().optional(),
+});
 
 export default async function OverduePage({
   searchParams,
 }: {
-  searchParams: { min_days?: string };
+  searchParams: { min_days?: string; page?: string } | Promise<{ min_days?: string; page?: string }>;
 }) {
-  const minDays = Number(searchParams.min_days) || 0;
+  // Asegurarse de que searchParams sea un objeto plano, no una Promise
+  const resolvedSearchParams = await Promise.resolve(searchParams);
 
-  const sql = `
+  console.log('OverduePage: searchParams resueltos:', resolvedSearchParams); // <-- Añadido para depuración
+
+  const { min_days, page } = searchParamsSchema.parse(resolvedSearchParams);
+  const minDays = Number(min_days) || 0;
+  const limit = 5;
+  const currentPage = Number(page) || 1;
+  const offset = (currentPage - 1) * limit;
+
+  let sql = `
     SELECT * FROM vw_overdue_loans 
     WHERE dias_atraso >= $1 
     ORDER BY dias_atraso DESC
+    LIMIT $2 OFFSET $3
   `;
-  const res = await query(sql, [minDays]);
+  const res = await query(sql, [minDays, limit, offset]);
   const reports = res.rows;
 
   const totalMultas = reports.reduce((acc: number, curr: any) => acc + Number(curr.multa_sugerida), 0);
@@ -78,6 +95,10 @@ export default async function OverduePage({
         {reports.length === 0 && (
           <p className="text-center py-10 text-gray-500">No se encontraron préstamos vencidos con ese criterio.</p>
         )}
+      </div>
+      <div className="mt-4 flex gap-2 justify-center">
+        {currentPage > 1 && <Link href={`?page=${currentPage - 1}${min_days ? `&min_days=${min_days}` : ''}`} className="px-3 py-1 bg-white border rounded hover:bg-gray-50">Anterior</Link>}
+        <Link href={`?page=${currentPage + 1}${min_days ? `&min_days=${min_days}` : ''}`} className="px-3 py-1 bg-white border rounded hover:bg-gray-50">Siguiente</Link>
       </div>
     </div>
   );
