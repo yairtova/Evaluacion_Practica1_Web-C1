@@ -15,7 +15,8 @@ Este proyecto utiliza variables de entorno para la configuración de la base de 
 
 1.  **Crea el archivo `.env`:** En la raíz del proyecto, crea un archivo llamado `.env`.
 2.  **Copia el contenido de `.env.example`:** Copia el contenido del archivo `.env.example` (que se encuentra en la raíz del proyecto) a tu nuevo archivo `.env`.
-3.  **Rellena los valores:** Edita el archivo `.env` y rellena los valores de las variables con tus credenciales y configuraciones locales. Asegúrate de que los valores sean correctos para que la aplicación pueda conectarse a la base de datos.
+3.  **Rellena los valores:** Edita el archivo `.env`. Es crucial que los valores de `DB_USER`, `DB_NAME` y `APP_DB_USER` coincidan con la configuración predeterminada del proyecto (`postgres`, `biblioteca` y `app_user` respectivamente), ya que estos están definidos en los scripts de la base de datos. Las contraseñas (`DB_PASSWORD` y `APP_DB_PASSWORD`) pueden ser personalizadas, pero si las cambias, deberás asegurarte de que los scripts de la base de datos (`db/05-roles.sql` y la configuración de Docker Compose) también reflejen esos cambios para evitar errores de conexión.
+
 
     Ejemplo de `.env` (con tus valores reales):
     ```
@@ -25,6 +26,8 @@ Este proyecto utiliza variables de entorno para la configuración de la base de 
     APP_DB_USER=app_user
     APP_DB_PASSWORD=biblioteca_pass
     ```
+    **Nota Importante:** El valor de `APP_DB_USER` debe ser `app_user` (o el nombre del usuario que hayas configurado en `db/05-roles.sql`) para que la aplicación pueda conectarse correctamente a la base de datos con los permisos adecuados.
+
 
 ## Levantar el Proyecto
 
