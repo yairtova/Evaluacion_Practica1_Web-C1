@@ -1,44 +1,16 @@
-import { query } from '@/lib/db';
-import Link from 'next/link';
-import { z } from 'zod';
-
 export const dynamic = 'force-dynamic';
+import { getFinesData } from "@/services/reports";
+import Link from 'next/link';
 
-const searchParamsSchema = z.object({
-  year: z.string().optional(),
-  page: z.string().optional(),
-});
-
-export default async function FinesPage({
-  searchParams,
-}: {
-  searchParams: { year?: string; page?: string } | Promise<{ year?: string; page?: string }>;
-}) {
-  // Asegurarse de que searchParams sea un objeto plano, no una Promise
+export default async function FinesPage({ searchParams }: any) {
   const resolvedSearchParams = await Promise.resolve(searchParams);
-
-  console.log('FinesPage: searchParams resueltos:', resolvedSearchParams); // <-- Añadido para depuración
-
-  const { year, page } = searchParamsSchema.parse(resolvedSearchParams);
-
+  const currentYear = resolvedSearchParams.year || new Date().getFullYear().toString();
+  const currentPage = Number(resolvedSearchParams.page) || 1;
   const limit = 5;
-  const currentPage = Number(page) || 1;
-  const offset = (currentPage - 1) * limit;
-  const currentYear = year || new Date().getFullYear().toString();
 
-  const res = await query(
-    `SELECT * FROM vw_fines_summary WHERE mes_reporte LIKE $1 || '-%' ORDER BY mes_reporte DESC LIMIT $2 OFFSET $3`,
-    [currentYear, limit, offset]
-  );
-  const fines = res.rows;
-
-  const totalRes = await query(
-    `SELECT COUNT(*) FROM vw_fines_summary WHERE mes_reporte LIKE $1 || '-%'`,
-    [currentYear]
-  );
-  const totalFines = totalRes.rows[0].count;
-  const totalPages = Math.ceil(totalFines / limit);
-
+  // Llamada al servicio 
+  const { data: fines, total } = await getFinesData(currentYear, limit, (currentPage - 1) * limit);
+  const totalPages = Math.ceil(total / limit);
   const totalRecaudado = fines.reduce((acc: number, curr: any) => acc + Number(curr.total_monto), 0);
 
   return (
@@ -48,16 +20,8 @@ export default async function FinesPage({
       <p className="text-gray-600 mb-8">Informe mensual de ingresos y efectividad de cobro.</p>
 
       <form className="mb-6 flex gap-2">
-        <input
-          type="number"
-          name="year"
-          placeholder="Filtrar por año (ej. 2023)"
-          defaultValue={currentYear}
-          className="border p-2 rounded w-full md:w-60"
-        />
-        <button type="submit" className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-black">
-          Filtrar
-        </button>
+        <input type="number" name="year" placeholder="Filtrar por año" defaultValue={currentYear} className="border p-2 rounded w-full md:w-60" />
+        <button type="submit" className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-black">Filtrar</button>
       </form>
 
       <div className="bg-amber-500 text-white p-5 rounded-lg shadow mb-6 inline-block">
@@ -76,10 +40,6 @@ export default async function FinesPage({
                 <span className="text-gray-500">Monto:</span>
                 <span className="font-bold text-gray-900">${f.total_monto}</span>
               </div>
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-gray-500">Multas:</span>
-                <span>{f.total_multas}</span>
-              </div>
               <div className="mt-3 w-full bg-gray-100 rounded-full h-2">
                 <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${f.porcentaje_pagado}%` }}></div>
               </div>
@@ -92,16 +52,8 @@ export default async function FinesPage({
       <div className="mt-6 flex justify-between items-center">
         <p className="text-sm text-gray-500">Página {currentPage} de {totalPages}</p>
         <div className="flex gap-2">
-          {currentPage > 1 && (
-            <Link href={`?page=${currentPage - 1}${currentYear ? `&year=${currentYear}` : ''}`} className="px-4 py-2 border rounded hover:bg-gray-100">
-              Anterior
-            </Link>
-          )}
-          {currentPage < totalPages && (
-            <Link href={`?page=${currentPage + 1}${currentYear ? `&year=${currentYear}` : ''}`} className="px-4 py-2 border rounded hover:bg-gray-100">
-              Siguiente
-            </Link>
-          )}
+          {currentPage > 1 && <Link href={`?page=${currentPage - 1}&year=${currentYear}`} className="px-4 py-2 border rounded hover:bg-gray-100">Anterior</Link>}
+          {currentPage < totalPages && <Link href={`?page=${currentPage + 1}&year=${currentYear}`} className="px-4 py-2 border rounded hover:bg-gray-100">Siguiente</Link>}
         </div>
       </div>
     </div>
